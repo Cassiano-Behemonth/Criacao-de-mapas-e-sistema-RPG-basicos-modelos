@@ -1,0 +1,9 @@
+[submodule "research/Mapa_sobrevivencia"]
+	path = research/Mapa_sobrevivencia
+	url = https://github.com/Cassiano-Behemonth/Mapa_sobrevivencia.git
+[submodule "research/wild_weast"]
+	path = research/wild_weast
+	url = https://github.com/Cassiano-Behemonth/wild_weast.git
+[submodule "research/mapap-rpg"]
+	path = research/mapap-rpg
+	url = https://github.com/Cassiano-Behemonth/mapap-rpg.git
