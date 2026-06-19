@@ -346,6 +346,78 @@ function confirmHotspotCreation() {
     showToast("Hotspot vinculado com sucesso!");
 }
 
+window.isHotspotDragging = false;
+
+window.navigateHotspot = function(targetId, event) {
+    event.stopPropagation();
+    event.preventDefault();
+    if (window.isHotspotDragging) return;
+
+    const select = document.getElementById('activeSectorSelect');
+    if (select) {
+        const targetSector = projectData.sectors.find(s => s.id === targetId);
+        if (targetSector) {
+            select.value = targetId;
+            updateEditorPreview();
+            showToast(`Visualizando: ${targetSector.name}`);
+        } else {
+            showToast(`Destino não encontrado no editor: ${targetId}`);
+        }
+    }
+};
+
+window.setupDragHotspot = function(idx, event) {
+    if (event.button !== 0 || event.target.classList.contains('hs-delete-badge')) return;
+    event.stopPropagation();
+    event.preventDefault();
+
+    const wrapper = document.getElementById(`hsWrapper-${idx}`);
+    if (!wrapper) return;
+
+    const sectorId = document.getElementById('activeSectorSelect').value;
+    const sector = projectData.sectors.find(s => s.id === sectorId);
+    const h = sector.hotspots[idx];
+    if (!h) return;
+
+    wrapper.classList.add('dragging');
+    window.isHotspotDragging = true;
+
+    const anchor = document.getElementById('mapAnchorGrid');
+    const rect = anchor.getBoundingClientRect();
+
+    let moved = false;
+
+    function onMouseMove(e) {
+        moved = true;
+        let x = ((e.clientX - rect.left) / rect.width) * 100;
+        let y = ((e.clientY - rect.top) / rect.height) * 100;
+
+        if (x < 0) x = 0; if (x > 100) x = 100;
+        if (y < 0) y = 0; if (y > 100) y = 100;
+
+        h.position.left = x.toFixed(3) + '%';
+        h.position.top = y.toFixed(3) + '%';
+
+        wrapper.style.left = h.position.left;
+        wrapper.style.top = h.position.top;
+    }
+
+    function onMouseUp() {
+        wrapper.classList.remove('dragging');
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        setTimeout(() => {
+            window.isHotspotDragging = false;
+        }, 80);
+        if (moved) {
+            showToast("Posição do hotspot salva!");
+        }
+    }
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+};
+
 function renderHotspotMarkers() {
     const layer = document.getElementById('hotspotMarkersLayer');
     if (!layer) return;
@@ -354,7 +426,10 @@ function renderHotspotMarkers() {
     const sector = projectData.sectors.find(s => s.id === sectorId);
 
     layer.innerHTML = sector.hotspots.map((h, idx) => `
-        <div class="hs-marker-viz" data-vis="${h.visibility || 'visible'}" style="top: ${h.position.top}; left: ${h.position.left};" title="${h.title}" onclick="removeHotspot(${idx}, event)"></div>
+        <div class="hs-marker-wrapper" id="hsWrapper-${idx}" style="top: ${h.position.top}; left: ${h.position.left};" onmousedown="setupDragHotspot(${idx}, event)">
+            <div class="hs-marker-viz" data-vis="${h.visibility || 'visible'}" title="${h.title}" onclick="navigateHotspot('${h.id}', event)"></div>
+            <div class="hs-delete-badge" title="Excluir vínculo" onclick="removeHotspot(${idx}, event)">×</div>
+        </div>
     `).join('');
 }
 
@@ -378,27 +453,59 @@ window.updatePromptForType = function(type) {
     const titleEl = document.getElementById('promptHeaderTitle');
     
     let ambienteStr = projectData.hasDayNight ? "O mapa tem um sistema de ciclos Dia/Noite (`isDay`). " : "";
-    let temaStr = projectData.theme === 'survival' ? "Modelo: Bunker Sci-Fi / Sobrevivência. Quero puzzles envolvendo sensores ou painéis de circuitos." :
-                  projectData.theme === 'western' ? "Modelo: Velho Oeste. Quero ação, duelos rápidos ou roubo/arrombamento de cofre." :
-                  projectData.theme === 'mystery' ? "Modelo: Mistério Obscuro. Preciso de exploração sutil, dedução ou organização de provas." : 
-                  `Modelo Personalizado: '${projectData.customThemeName}'. Crie a mecânica mergulhada puramente nesse cenário.`;
+    let temaStr = projectData.theme === 'survival' ? "Modelo: Bunker Sci-Fi / Sobrevivência. Puzzles eletrônicos, hacks e monstros mecânicos." :
+                  projectData.theme === 'western' ? "Modelo: Velho Oeste. Puzzles de saloon, chaves, arrombamento de cofres e tiros." :
+                  projectData.theme === 'mystery' ? "Modelo: Mistério Obscuro/Pecado. Pistas antigas, espíritos, diários profanos e rituais." : 
+                  `Modelo Personalizado: '${projectData.customThemeName}'.`;
                   
     if(type === 'minigame') {
-        if(titleEl) titleEl.innerText = '⚙️ Gerador Dinâmico de Modais';
-        promptEl.value = `📍 ESTÁGIO 1: A LÓGICA DO MINIGAME
-"Estou desenvolvendo o sistema 'The RPG Forge' do meu mapa. Crie o código self-contained de um MINIGAME. Ele deve contar com HTML (Modal), CSS nativo e Javascript completo. 
-Contexto do mapa global: THEME_LORE = '${projectData.theme === 'custom' ? projectData.customThemeName : projectData.theme}'. ${ambienteStr} ${temaStr} Retorne pronto para eu colar logo abaixo da tag </body>."`;
+        if(titleEl) titleEl.innerText = '🧩 Puzzles e Minijogos (Ex: Cofre Rotativo)';
+        promptEl.value = `Estou criando um minijogo interativo (ex: Cofre Mecânico com discos rotativos de 0 a 20) no meu VTT.
+O tema atual é: "${projectData.theme === 'custom' ? projectData.customThemeName : projectData.theme}". ${ambienteStr} ${temaStr}
+
+Escreva o código self-contained (HTML, CSS e JS) que define:
+1. O overlay/modal do minijogo. Exiba uma imagem de fundo (ex: 'cofre_fechado.png').
+2. Três discos ou áreas interativas onde o usuário pode rolar a roda do mouse (onwheel) para mudar o valor (de 0 a 20) e rotacionar visualmente o disco (rotate).
+3. Efeito sonoro a cada rotação usando playSoundEffect('sndTranca').
+4. Verificação de senha. Quando acertar a senha (ex: [7, 12, 9]), altere a imagem de fundo (ex: 'cofre_aberto.png'), toque o som playSoundEffect('sndSafeOpen') e revele o item secreto chamando openHandout('text', '<conteúdo>', 'Título da Pista', 'safe_secret').
+Por favor, gere em um único bloco de código HTML/JS/CSS pronto para colar.`;
+    } else if (type === 'creature') {
+        if(titleEl) titleEl.innerText = '👹 Invocação de Criaturas e Jumpscares';
+        promptEl.value = `Estou configurando criaturas, vultos e jumpscares (sustos) de vídeo/áudio no meu VTT.
+O motor do site já suporta nativamente as seguintes funções:
+- spawnMonster(title, contentSrc, size, filter): Cria um monstro arrastável e rotacionável no mapa (ex: title="Vulto", contentSrc="vulto.webm", size="120px").
+- toggleJumpscare(videoSrc, backgroundImageSrc, soundAudioId): Dispara um susto em tela cheia com vídeo em loop (ex: toggleJumpscare("z.webm", "fundo monstro.png", "sndZumbi")).
+- activeEnemyRef: Referência para o inimigo focado que pode ser destruído pressionando Delete.
+
+Escreva instruções em Javascript ou gatilhos customizados para:
+1. Associar o pressionar de teclas (ex: segurar F7 e pressionar 'Z', 'V' ou 'A') para invocar criaturas diferentes nas coordenadas do cursor (usando spawnMonster).
+2. Criar uma função de Jumpscare de tela cheia que ao ser acionado bloqueia a tela, toca um som alto (como 'sndDominic' ou 'sndPertubado') e exibe o monstro correndo em loop, fechando ao clicar novamente.
+3. Mostrar um exemplo de como a lógica do renderMap renderiza o monstro (suportando tags video com autoplay, muted e pointer-events desativados para evitar o menu de controle do navegador).`;
+    } else if (type === 'audio') {
+        if(titleEl) titleEl.innerText = '🔊 Configuração de Áudios e Efeitos Sonoros';
+        promptEl.value = `Estou configurando os efeitos sonoros e a música de suspense no meu VTT.
+O motor do site possui:
+- playSoundEffect(audioElementId): Reinicia e toca um elemento de áudio (ex: playSoundEffect('sndLanterna')).
+- updateMonsterSound(): Sincroniza e controla o volume de sons de monstros ativos em loop baseados nos jumpscares abertos.
+- updateVanMotorSound(): Toca um som de motor em loop se o jogador estiver no mapa da van ('andar_9').
+- Uma API Web Audio nativa: playClickSound(isSuccess) que sintetiza sons de clique em tempo real sem arquivos externos.
+
+Escreva códigos em JS ou configurações HTML para:
+1. Criar um conjunto de tags de áudio pré-carregados (<audio id="..." src="..." preload="auto" loop></audio>) no final do HTML.
+2. Criar uma função para gerenciar o volume global e aplicar transições suaves (fade-in / fade-out) de áudio ao alternar entre ciclos Dia/Noite ou ao acionar Blackout.
+3. Explicar como reproduzir ruídos de monstros em loop no fundo apenas enquanto a criatura correspondente estiver viva e ativa na tela.`;
     } else if (type === 'npc') {
-        if(titleEl) titleEl.innerText = '🗣️ Engajamento Narrativo';
-        promptEl.value = `"Projeto Base: 'The RPG Forge'. HTML/JS Vanilla. THEME_LORE atual é '${projectData.theme === 'custom' ? projectData.customThemeName : projectData.theme}'.
-Sua missão: Construir um componente ModalUI elegante de Diálogos, do Zero.
-1. Caixa classic RPG presa ao rodapé, Portrait redondo e efeito Typewriter.
-2. Função 'iniciarDialogo(nome, arrayDeMensagens)' ativável com cliques para ir p/ próxima linha. Retorne em bloco sel-contained."`;
+        if(titleEl) titleEl.innerText = '🗣️ Caixa de Diálogos de NPCs';
+        promptEl.value = `Preciso de uma caixa de diálogos com NPCs no estilo RPG clássico para o VTT.
+1. Crie uma div estruturada no rodapé com estilo vintage (glassmorphism/retro) com um avatar redondo no lado esquerdo.
+2. Função JS 'iniciarDialogo(nomeNpc, falasArray)' que exibe o nome e anima o texto letra por letra (efeito typewriter).
+3. O clique na caixa de diálogo ou pressionar 'Espaço' avança para a próxima fala. No final do array, fecha o modal suavemente. Mande o bloco self-contained de HTML/CSS/JS.`;
     } else if (type === 'puzzle') {
-        if(titleEl) titleEl.innerText = '🔑 Fechaduras Digitais';
-        promptEl.value = `"Preciso de um Terminal de Senha / Puzzle.
-1. Um Enigma textual complexo moldado pelo THEME_LORE: '${projectData.theme === 'custom' ? projectData.customThemeName : projectData.theme}'. (Gere o lore do desafio).
-2. Input e Botão. Acerto encerra div, Erro treme tela (CSS .shake). Mande HTML/JS selfcontained."`;
+        if(titleEl) titleEl.innerText = '🔑 Senhas e Terminais Hackers';
+        promptEl.value = `Preciso de uma fechadura eletrônica ou terminal hacker para portas trancadas no VTT.
+1. Interface estilizada de terminal CRT verde de computador antigo.
+2. Um desafio textual gerado com base no lore "${projectData.theme === 'custom' ? projectData.customThemeName : projectData.theme}".
+3. Campo de entrada de senha. Se a senha digitada estiver incorreta, aplica uma animação de tremor (CSS shake) e toca som de erro. Se estiver correta, executa a mudança de mapa chamando renderMap('andar_X') e fecha o terminal. Retorne pronto para colar.`;
     }
 }
 
@@ -478,6 +585,13 @@ function generateTemplate() {
         @keyframes fogParticlesDrift { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
     ` : '';
     let blackoutCanvasCSS = projectData.hasBlackout ? '#flashlightCanvas { pointer-events:none; position:absolute; inset:0; width:100%; height:100%; z-index:90; display:none; }' : '';
+    const enemyCSS = `
+        .hs-marker-viz.hs-enemy { background: transparent !important; border: none !important; box-shadow: none !important; width: auto !important; height: auto !important; border-radius: 0 !important; pointer-events: auto; z-index: 15; user-select: none !important; -webkit-user-select: none !important; }
+        .hs-marker-viz.hs-enemy:hover { transform: translate(-50%, -50%) !important; background: transparent !important; border: none !important; box-shadow: none !important; }
+        .hs-enemy video, .hs-enemy img { pointer-events: none; max-width: 800px; max-height: 800px; display: block; user-select: none !important; -webkit-user-drag: none !important; background: transparent !important; outline: none !important; border: none !important; }
+        .video-container { background: transparent !important; border: none !important; outline: none !important; box-shadow: none !important; }
+        video::-webkit-media-controls, video::-webkit-media-controls-start-playback-button, video::-webkit-media-controls-overlay-play-button, video::-webkit-media-controls-panel, video::-webkit-media-controls-play-button, *::-webkit-media-controls-start-playback-button, *::-webkit-media-controls-overlay-play-button, video::-webkit-media-controls-picture-in-picture-button, video::-webkit-media-controls-enclosure, video::-internal-media-controls-download-button, video::-internal-media-controls-overlay-cast-button { display: none !important; -webkit-appearance: none !important; }
+    `;
 
     return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -535,6 +649,7 @@ function generateTemplate() {
         ${cctvLayerCSS}
         ${fogCSS}
         ${blackoutCanvasCSS}
+        ${enemyCSS}
         
     </style>
 </head>
@@ -594,6 +709,28 @@ function generateTemplate() {
         </div>
     </div>
 
+    <!-- JUMPSCARE / CUTSCENE OVERLAY -->
+    <div id="jumpscareOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 30000; background: #000 center/cover no-repeat; align-items: flex-start; justify-content: center;">
+        <div style="position: relative; width: fit-content; height: fit-content; display: flex; align-items: center; justify-content: center;">
+            <video id="jumpscareVideo" src="" autoplay loop muted playsinline disablePictureInPicture oncontextmenu="return false;" controlsList="nodownload nofullscreen noremoteplayback" style="width: 35vw; max-height: 50vh; object-fit: contain; margin-top: 25vh; pointer-events: none;"></video>
+            <div id="jumpscareShield" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; cursor: pointer;" onclick="toggleJumpscare()"></div>
+        </div>
+    </div>
+
+    <!-- EFEITOS SONOROS PADRÃO -->
+    <audio id="sndLanterna" src="lanterna.mp3" preload="auto"></audio>
+    <audio id="sndBlackout" src="blackout.mp3" preload="auto"></audio>
+    <audio id="sndDayNight" src="luzenoite.mp3" preload="auto"></audio>
+    <audio id="sndTranca" src="tranca.mp3" preload="auto"></audio>
+    <audio id="sndSafeOpen" src="aberto.mp3" preload="auto"></audio>
+    <audio id="sndAnarquico" src="aranquico_laugh.mp3" preload="auto" loop></audio>
+    <audio id="sndZumbi" src="rugido zumbi.mp3" preload="auto" loop></audio>
+    <audio id="sndDominic" src="dominic scream.mp3" preload="auto" loop></audio>
+    <audio id="sndPertubado" src="pertubado de energia_som.mp3" preload="auto" loop></audio>
+    <audio id="sndVulto" src="vulto_som.mp3" preload="auto" loop></audio>
+    <audio id="sndMeaCulpa" src="mea_culpa.mp3" preload="auto" loop></audio>
+    <audio id="sndVanMotor" src="van_motor.mp3" preload="auto" loop></audio>
+
     <script>
         const THEME_LORE = "${projectData.theme === 'custom' ? projectData.customThemeName : projectData.theme}";
         const hierarchy = ${JSON.stringify(hierarchy)};
@@ -606,6 +743,13 @@ function generateTemplate() {
         let isCctv = false;
         let cctvInterval = null;
         let navHistory = [];
+        let activeEnemyRef = null;
+        let isF7Down = false, f7SpecialSpawned = false;
+        let isF8Down = false, f8SpecialTriggered = false;
+        let isF9Down = false, f9SpecialSpawned = false;
+        let isF10Down = false, f10SpecialTriggered = false;
+        let spawnCursorX = 50;
+        let spawnCursorY = 50;
         
         const ctxMenu = document.getElementById('ctxMenu');
 
@@ -626,6 +770,13 @@ function generateTemplate() {
         document.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             openCtxMenu(e.clientX, e.clientY);
+            
+            const anc = document.getElementById('mapAnchor');
+            const rect = anc.getBoundingClientRect();
+            spawnCursorX = ((e.clientX - rect.left) / rect.width) * 100;
+            spawnCursorY = ((e.clientY - rect.top) / rect.height) * 100;
+            if (spawnCursorX < 0) spawnCursorX = 0; if (spawnCursorX > 100) spawnCursorX = 100;
+            if (spawnCursorY < 0) spawnCursorY = 0; if (spawnCursorY > 100) spawnCursorY = 100;
         });
 
         document.addEventListener('click', (e) => {
@@ -663,6 +814,13 @@ function generateTemplate() {
             e.preventDefault(); // Impede o navegador de puxar a imagem fantasma ao iniciar Marquee
             
             const rect = anchor.getBoundingClientRect();
+
+            if (e.button === 0 && !e.shiftKey && !e.altKey) {
+                spawnCursorX = ((e.clientX - rect.left) / rect.width) * 100;
+                spawnCursorY = ((e.clientY - rect.top) / rect.height) * 100;
+                if (spawnCursorX < 0) spawnCursorX = 0; if (spawnCursorX > 100) spawnCursorX = 100;
+                if (spawnCursorY < 0) spawnCursorY = 0; if (spawnCursorY > 100) spawnCursorY = 100;
+            }
             
             if(e.shiftKey) { // Ping Tatico Sonar
                 const ping = document.createElement('div');
@@ -744,11 +902,11 @@ function generateTemplate() {
             const k = e.key.toLowerCase();
 
             // Mapeamentos Ambientais Gerados
-            if ("${projectData.keyDayNight}" && k === "${projectData.keyDayNight}") { if(hasDayNight) toggleTime(); }
-            if ("${projectData.keyCctv}" && k === "${projectData.keyCctv}") { if(${projectData.hasCctv}) toggleCCTV(); }
-            if ("${projectData.keyFog}" && k === "${projectData.keyFog}") { if(${projectData.hasFog}) toggleFog(); }
-            if ("${projectData.keyBlackout}" && k === "${projectData.keyBlackout}") { if(${projectData.hasBlackout}) toggleBlackout(); }
-            if ("${projectData.keyTokenLight}" && k === "${projectData.keyTokenLight}") {
+            if ("\${projectData.keyDayNight}" && k === "\${projectData.keyDayNight}") { if(hasDayNight) toggleTime(); }
+            if ("\${projectData.keyCctv}" && k === "\${projectData.keyCctv}") { if(\${projectData.hasCctv}) toggleCCTV(); }
+            if ("\${projectData.keyFog}" && k === "\${projectData.keyFog}") { if(\${projectData.hasFog}) toggleFog(); }
+            if ("\${projectData.keyBlackout}" && k === "\${projectData.keyBlackout}") { if(\${projectData.hasBlackout}) toggleBlackout(); }
+            if ("\${projectData.keyTokenLight}" && k === "\${projectData.keyTokenLight}") {
                  if (selectedTokens.size > 0) {
                      // Alterna as lanternas dos tokens marcardos e refaz render do mapa
                      selectedTokens.forEach(id => window.toggleTokenLight(id));
@@ -757,29 +915,102 @@ function generateTemplate() {
             }
 
             // Mapeamentos de Botões Nativos Mestre
-            ${projectData.masterButtons.map(b => b.key ? `if (k === "${b.key.toLowerCase()}") { ${b.action}; }` : '').join('\n            ')}
+            \${projectData.masterButtons.map(b => b.key ? \`if (k === "\\${b.key.toLowerCase()}") { \${b.action}; }\` : '').join('\\n            ')}
 
-            // Delete (Matar Tokens)
-            if((e.key === 'Delete' || e.key === 'Backspace') && selectedTokens.size > 0) {
-                charsData[currentId] = charsData[currentId].filter(x => !selectedTokens.has(x.id));
-                selectedTokens.clear();
-                renderMap(currentId, true);
+            // Spawns e Jumpscares via F7-F10
+            if (isF7Down) {
+                if (k === 'z') { e.preventDefault(); spawnMonster("Zumbi de Sangue", "z.webm", "200px"); f7SpecialSpawned = true; }
+                else if (k === 'v') { e.preventDefault(); spawnMonster("Vulto", "vulto.webm", "120px"); f7SpecialSpawned = true; }
+                else if (k === 'a') { e.preventDefault(); spawnMonster("Anárquico", "Anarquico.webm", "75px"); f7SpecialSpawned = true; }
             }
-            // Espelhar token selecionado com ← ou →
-            if((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && selectedTokens.size > 0) {
-                e.preventDefault();
-                if(!charsData[currentId]) return;
-                charsData[currentId].forEach(t => {
-                    if(selectedTokens.has(t.id)) {
-                        t.flipped = !t.flipped;
-                        const el = document.querySelector(\`.char-token[data-id="\${t.id}"]\`);
-                        if(el) {
-                            // Flip apenas no emoji, nao no nome
-                            const face = el.querySelector('.token-face');
-                            if(face) face.style.transform = t.flipped ? 'scaleX(-1)' : 'scaleX(1)';
+
+            if (isF8Down) {
+                if (k === 'z') { e.preventDefault(); toggleJumpscare("z.webm", "fundo monstro.png", "sndZumbi"); f8SpecialTriggered = true; }
+                else if (k === 'v') { e.preventDefault(); toggleJumpscare("vulto.webm", "fundo_dominic.png", "sndVulto"); f8SpecialTriggered = true; }
+                else if (k === 'a') { e.preventDefault(); toggleJumpscare("Anarquico.webm", "fundo_anarquico.png", "sndAnarquico"); f8SpecialTriggered = true; }
+            }
+
+            if (isF9Down) {
+                if (k === 'd') { e.preventDefault(); spawnMonster("Dominic", "dominc.webm", "250px"); f9SpecialSpawned = true; }
+                else if (k === 'p') { e.preventDefault(); spawnMonster("Pertubado de Energia", "pertubado de energia.webm", "110px"); f9SpecialSpawned = true; }
+                else if (k === 'm') { e.preventDefault(); spawnMonster("Mea Culpa", "mea_culpa.webm", "150px"); f9SpecialSpawned = true; }
+            }
+
+            if (isF10Down) {
+                if (k === 'd') { e.preventDefault(); toggleJumpscare("dominc.webm", "fundo_dominic.png", "sndDominic"); f10SpecialTriggered = true; }
+                else if (k === 'p') { e.preventDefault(); toggleJumpscare("pertubado de energia.webm", "fundo pertubado de energia.png", "sndPertubado"); f10SpecialTriggered = true; }
+                else if (k === 'm') { e.preventDefault(); toggleJumpscare("mea_culpa.webm", "fundo_mea_culpa.png", "sndMeaCulpa"); f10SpecialTriggered = true; }
+            }
+
+            if (e.key === 'F7') { e.preventDefault(); if (!e.repeat) { isF7Down = true; f7SpecialSpawned = false; } }
+            if (e.key === 'F8') { e.preventDefault(); if (!e.repeat) { isF8Down = true; f8SpecialTriggered = false; } }
+            if (e.key === 'F9') { e.preventDefault(); if (!e.repeat) { isF9Down = true; f9SpecialSpawned = false; } }
+            if (e.key === 'F10') { e.preventDefault(); if (!e.repeat) { isF10Down = true; f10SpecialTriggered = false; } }
+
+            // Delete (Matar Tokens ou Inimigos)
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedTokens.size > 0) {
+                    charsData[currentId] = charsData[currentId].filter(x => !selectedTokens.has(x.id));
+                    selectedTokens.clear();
+                    renderMap(currentId, true);
+                } else if (activeEnemyRef) {
+                    const hs = hierarchy[currentId].hotspots;
+                    const idx = hs.indexOf(activeEnemyRef);
+                    if (idx !== -1) {
+                        if (!activeEnemyRef.isDead) {
+                            activeEnemyRef.isDead = true;
+                            if (activeEnemyRef.title.includes("Anárquico") || activeEnemyRef.title.includes("Mea Culpa")) {
+                                activeEnemyRef.content = "anarq_morto.png";
+                                if (activeEnemyRef.title.includes("Mea Culpa")) {
+                                    activeEnemyRef.size = "130px";
+                                }
+                            } else if (activeEnemyRef.title.includes("Vulto") || activeEnemyRef.title.includes("Pertubado")) {
+                                activeEnemyRef.content = "energia_morta.png";
+                                if (activeEnemyRef.title.includes("Vulto")) {
+                                    activeEnemyRef.size = "70px";
+                                } else if (activeEnemyRef.title.includes("Pertubado")) {
+                                    activeEnemyRef.size = "85px";
+                                }
+                            } else {
+                                activeEnemyRef.content = "z morto.png";
+                                if (activeEnemyRef.title.includes("Zumbi de Sangue")) {
+                                    activeEnemyRef.size = "50px";
+                                } else if (activeEnemyRef.title.includes("Dominic")) {
+                                    activeEnemyRef.size = "90px";
+                                }
+                            }
+                            console.log("Inimigo agora está morto!");
+                        } else {
+                            hs.splice(idx, 1);
+                            activeEnemyRef = null;
+                            console.log("Inimigo removido do mapa!");
                         }
+                        renderMap(currentId, true);
+                        updateMonsterSound();
                     }
-                });
+                }
+            }
+            // Espelhar token selecionado ou monstro ativo com ← ou →
+            if(e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                if (selectedTokens.size > 0) {
+                    e.preventDefault();
+                    if(!charsData[currentId]) return;
+                    charsData[currentId].forEach(t => {
+                        if(selectedTokens.has(t.id)) {
+                            t.flipped = !t.flipped;
+                            const el = document.querySelector(\`.char-token[data-id="\\\${t.id}"]\`);
+                            if(el) {
+                                // Flip apenas no emoji, nao no nome
+                                const face = el.querySelector('.token-face');
+                                if(face) face.style.transform = t.flipped ? 'scaleX(-1)' : 'scaleX(1)';
+                            }
+                        }
+                    });
+                } else if (activeEnemyRef) {
+                    e.preventDefault();
+                    activeEnemyRef.flipped = !activeEnemyRef.flipped;
+                    renderMap(currentId, true);
+                }
             }
             // Copiar
             if(e.ctrlKey && e.key.toLowerCase() === 'c') {
@@ -796,6 +1027,37 @@ function generateTemplate() {
                     selectedTokens.add(clone.id);
                 });
                 renderMap(currentId, true);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'F7') {
+                if (isF7Down && !f7SpecialSpawned) {
+                    spawnMonster("Anárquico", "Anarquico.webm", "70px");
+                }
+                isF7Down = false;
+                f7SpecialSpawned = false;
+            }
+            if (e.key === 'F8') {
+                if (isF8Down && !f8SpecialTriggered) {
+                    toggleJumpscare("Anarquico.webm", "fundo_anarquico.png", "sndAnarquico");
+                }
+                isF8Down = false;
+                f8SpecialTriggered = false;
+            }
+            if (e.key === 'F9') {
+                if (isF9Down && !f9SpecialSpawned) {
+                    spawnMonster("Pertubado de Energia", "pertubado de energia.webm", "110px");
+                }
+                isF9Down = false;
+                f9SpecialSpawned = false;
+            }
+            if (e.key === 'F10') {
+                if (isF10Down && !f10SpecialTriggered) {
+                    toggleJumpscare("pertubado de energia.webm", "fundo pertubado de energia.png", "sndPertubado");
+                }
+                isF10Down = false;
+                f10SpecialTriggered = false;
             }
         });
 
@@ -963,18 +1225,235 @@ function generateTemplate() {
             hsLayer.innerHTML = '';
             document.getElementById('charsLayer').innerHTML = ''; 
 
-            data.hotspots.forEach(h => {
+            data.hotspots.forEach((h, hIdx) => {
                 const el = document.createElement('div');
                 el.className = 'hs-marker-viz';
-                el.setAttribute('data-vis', h.visibility || 'visible');
+                el.setAttribute('data-vis', h.type === 'enemy' ? 'enemy' : (h.visibility || 'visible'));
                 el.style.top = h.position.top;
                 el.style.left = h.position.left;
                 el.title = h.title;
-                el.onclick = () => renderMap(h.id);
+
+                if (h.type === 'enemy') {
+                    el.classList.add('hs-enemy');
+                    if (h.isDead) el.classList.add('dead');
+
+                    let customFilter = h.filter || 'drop-shadow(0 15px 15px rgba(0,0,0,0.8))';
+                    let finalSize = h.size || "144px";
+                    let customSize = \`width: \${finalSize}; height: auto;\`;
+                    let flipStyle = h.flipped ? 'scaleX(-1) ' : '';
+                    let rotStyle = h.rot ? \`rotate(\${h.rot}deg)\` : '';
+                    let transformStyle = (flipStyle || rotStyle) ? \` transform: \${flipStyle}\${rotStyle};\` : '';
+
+                    if (h.content.toLowerCase().endsWith('.png') || h.content.toLowerCase().endsWith('.jpg')) {
+                        el.innerHTML = \`<img src="\${h.content}" style="\${customSize} filter: \${customFilter}; cursor: grab;\${transformStyle}" draggable="false" ondragstart="return false;">\`;
+                    } else {
+                        el.innerHTML = \`
+                                <div class="video-container" style="position: relative; \${customSize}" draggable="false" ondragstart="return false;">
+                                    <video src="\${h.content}" autoplay loop muted playsinline disablePictureInPicture oncontextmenu="return false;" controlsList="nodownload nofullscreen noremoteplayback" style="width: 100%; height: auto; filter: \${customFilter}; pointer-events: none; \${transformStyle}; opacity: 0; transition: opacity 0.2s;" onplaying="this.style.opacity=1" draggable="false" ondragstart="return false;"></video>
+                                    <div class="video-shield" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; cursor: grab;" draggable="false" ondragstart="return false;"></div>
+                                </div>\`;
+                    }
+
+                    el.onwheel = (e) => {
+                        e.preventDefault();
+                        const delta = e.deltaY > 0 ? 15 : -15;
+                        h.rot = ((h.rot || 0) + delta) % 360;
+                        const videoEl = el.querySelector('video') || el.querySelector('img');
+                        if (videoEl) {
+                            let fStyle = h.flipped ? 'scaleX(-1) ' : '';
+                            let rStyle = h.rot ? \`rotate(\${h.rot}deg)\` : '';
+                            videoEl.style.transform = \`\${fStyle}\${rStyle}\`;
+                        }
+                    };
+
+                    el.onmousedown = (e) => {
+                        e.stopPropagation();
+                        selectedTokens.clear();
+                        updateSelectionVisuals();
+                        activeEnemyRef = h;
+
+                        let dragOriginX = e.clientX;
+                        let dragOriginY = e.clientY;
+                        let initialLeft = parseFloat(h.position.left);
+                        let initialTop = parseFloat(h.position.top);
+
+                        const onMove = (ev) => {
+                            const rect = anchor.getBoundingClientRect();
+                            let deltaX = ((ev.clientX - dragOriginX) / rect.width) * 100;
+                            let deltaY = ((ev.clientY - dragOriginY) / rect.height) * 100;
+                            h.position.left = (initialLeft + deltaX).toFixed(3) + '%';
+                            h.position.top = (initialTop + deltaY).toFixed(3) + '%';
+                            el.style.left = h.position.left;
+                            el.style.top = h.position.top;
+                        };
+
+                        const onUp = () => {
+                            document.removeEventListener('mousemove', onMove);
+                            document.removeEventListener('mouseup', onUp);
+                        };
+
+                        document.addEventListener('mousemove', onMove);
+                        document.addEventListener('mouseup', onUp);
+                    };
+                } else {
+                    el.onclick = () => renderMap(h.id);
+                }
                 hsLayer.appendChild(el);
             });
             
             renderSavedChars();
+            updateMonsterSound();
+            updateVanMotorSound();
+            
+            // Garantir que todos os vídeos de inimigos com autoplay realmente comecem a rodar
+            hsLayer.querySelectorAll('video').forEach(v => {
+                v.play().catch(e => console.log("Autoplay de inimigo bloqueado ou aguardando interação:", e));
+            });
+        }
+
+        function playSoundEffect(id) {
+            const s = document.getElementById(id);
+            if (s) { s.currentTime = 0; s.play().catch(e => console.log('Audio error:', e)); }
+        }
+
+        function spawnMonster(title, content, size, filter = "drop-shadow(0 15px 15px rgba(0,0,0,0.8))") {
+            const newEnemy = {
+                "type": "enemy",
+                "title": title,
+                "content": content,
+                "size": size,
+                "filter": filter,
+                "position": { "top": spawnCursorY.toFixed(3) + "%", "left": spawnCursorX.toFixed(3) + "%" }
+            };
+            hierarchy[currentId].hotspots.push(newEnemy);
+            renderMap(currentId, true);
+            updateMonsterSound();
+            console.log(title + " invocado no mapa!");
+        }
+
+        function toggleJumpscare(videoSrc, bgImage, soundId) {
+            const jsOverlay = document.getElementById('jumpscareOverlay');
+            const jsVid = document.getElementById('jumpscareVideo');
+            if (!jsOverlay || !jsVid) return;
+
+            if (jsOverlay.style.display === 'none' || jsOverlay.style.display === '') {
+                jsVid.src = videoSrc;
+                jsVid.disablePictureInPicture = true;
+                jsVid.controlsList = "nodownload nofullscreen noremoteplayback";
+                jsVid.muted = true;
+
+                if (videoSrc.includes("Anarquico")) {
+                    jsVid.style.width = "40vw";
+                    jsVid.style.maxHeight = "60vh";
+                    jsVid.style.marginTop = "25vh";
+                } else if (videoSrc.includes("pertubado")) {
+                    jsVid.style.width = "30vw";
+                    jsVid.style.maxHeight = "85vh";
+                    jsVid.style.marginTop = "25vh";
+                } else if (videoSrc.includes("z.webm")) {
+                    jsVid.style.width = "60vw";
+                    jsVid.style.maxHeight = "60vh";
+                    jsVid.style.marginTop = "35vh";
+                } else if (videoSrc.includes("dominc")) {
+                    jsVid.style.width = "80vw";
+                    jsVid.style.maxHeight = "80vh";
+                    jsVid.style.marginTop = "15vh";
+                } else if (videoSrc.includes("vulto")) {
+                    jsVid.style.width = "80vw";
+                    jsVid.style.maxHeight = "80vh";
+                    jsVid.style.marginTop = "15vh";
+                } else if (videoSrc.includes("mea_culpa")) {
+                    jsVid.style.width = "100vw";
+                    jsVid.style.maxHeight = "100vh";
+                    jsVid.style.marginTop = "0vh";
+                } else {
+                    jsVid.style.width = "35vw";
+                    jsVid.style.maxHeight = "50vh";
+                    jsVid.style.marginTop = "25vh";
+                }
+
+                jsOverlay.style.backgroundImage = \`url('\\${bgImage}')\`;
+                jsOverlay.style.display = 'flex';
+                jsVid.play();
+                updateMonsterSound();
+            } else {
+                jsOverlay.style.display = 'none';
+                jsVid.pause();
+                updateMonsterSound();
+            }
+        }
+
+        function updateMonsterSound() {
+            const sAnarquico = document.getElementById('sndAnarquico');
+            const sZumbi = document.getElementById('sndZumbi');
+            const sDom = document.getElementById('sndDominic');
+            const sPertub = document.getElementById('sndPertubado');
+            const sVulto = document.getElementById('sndVulto');
+            const sMea = document.getElementById('sndMeaCulpa');
+            if (!sAnarquico || !sZumbi || !sDom || !sPertub) return;
+
+            sAnarquico.volume = 0.35;
+            sZumbi.volume = 0.15;
+            sDom.volume = 0.15;
+            sPertub.volume = 0.15;
+            if (sVulto) sVulto.volume = 0.15;
+            if (sMea) sMea.volume = 0.40;
+
+            const jsOverlay = document.getElementById('jumpscareOverlay');
+            const isJsActive = jsOverlay && jsOverlay.style.display === 'flex';
+            const jsVid = document.getElementById('jumpscareVideo');
+            const isDominicJs = isJsActive && jsVid && jsVid.src.includes('dominc.webm');
+            const isZombiJs = isJsActive && jsVid && jsVid.src.includes('z.webm');
+            const isAnarquicoJs = isJsActive && jsVid && jsVid.src.includes('Anarquico.webm');
+            const isPertubadoJs = isJsActive && jsVid && (jsVid.src.includes('pertubado%20de%20energia.webm') || jsVid.src.includes('pertubado de energia.webm'));
+            const isVultoJs = isJsActive && jsVid && jsVid.src.includes('vulto.webm');
+            const isMeaJs = isJsActive && jsVid && jsVid.src.includes('mea_culpa.webm');
+
+            if (isAnarquicoJs || charsData[currentId]?.some(h => h.type === 'enemy' && h.title === 'Anárquico' && !h.isDead)) {
+                if (sAnarquico.paused) sAnarquico.play().catch(e => console.log(e));
+            } else {
+                sAnarquico.pause();
+            }
+
+            if (isZombiJs || charsData[currentId]?.some(h => h.type === 'enemy' && h.title === 'Zumbi de Sangue' && !h.isDead)) {
+                if (sZumbi.paused) sZumbi.play().catch(e => console.log(e));
+            } else {
+                sZumbi.pause();
+            }
+
+            if (isDominicJs || charsData[currentId]?.some(h => h.type === 'enemy' && h.title === 'Dominic' && !h.isDead)) {
+                if (sDom.paused) sDom.play().catch(e => console.log(e));
+            } else {
+                sDom.pause();
+            }
+
+            if (isPertubadoJs || charsData[currentId]?.some(h => h.type === 'enemy' && h.title === 'Pertubado de Energia' && !h.isDead)) {
+                if (sPertub.paused) sPertub.play().catch(e => console.log(e));
+            } else {
+                sPertub.pause();
+            }
+
+            if (isVultoJs || charsData[currentId]?.some(h => h.type === 'enemy' && h.title === 'Vulto' && !h.isDead)) {
+                if (sVulto.paused) sVulto.play().catch(e => console.log(e));
+            } else {
+                if (sVulto) sVulto.pause();
+            }
+
+            if (isMeaJs || charsData[currentId]?.some(h => h.type === 'enemy' && h.title === 'Mea Culpa' && !h.isDead)) {
+                if (sMea.paused) sMea.play().catch(e => console.log(e));
+            } else {
+                if (sMea) sMea.pause();
+            }
+        }
+
+        function updateVanMotorSound() {
+            const sEngine = document.getElementById('sndVanMotor');
+            if (!sEngine) return;
+            if (currentId === 'andar_9' && (charsData[currentId] && charsData[currentId].length > 0)) {
+                if (sEngine.paused) sEngine.play().catch(e => console.log(e));
+            } else {
+                sEngine.pause();
+            }
         }
 
         function goBack() { if (navHistory.length > 0) renderMap(navHistory.pop(), true); }
@@ -992,6 +1471,7 @@ function generateTemplate() {
             drawChar(cInfo);
             updateSelectionVisuals();
             if(isBlackout && typeof drawFlashlight === 'function') drawFlashlight();
+            updateVanMotorSound();
         }
 
         function renderSavedChars() {
