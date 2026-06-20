@@ -26,6 +26,119 @@ let projectData = {
     ]
 };
 
+// PERSISTENCIA DO BUILDER (SALVAR NO LOCALSTORAGE)
+function saveProjectData() {
+    const dataToSave = {
+        name: projectData.name,
+        theme: projectData.theme,
+        customThemeName: projectData.customThemeName,
+        hasDayNight: projectData.hasDayNight,
+        keyDayNight: projectData.keyDayNight,
+        hasBlackout: projectData.hasBlackout,
+        keyBlackout: projectData.keyBlackout,
+        keyTokenLight: projectData.keyTokenLight,
+        hasCctv: projectData.hasCctv,
+        keyCctv: projectData.keyCctv,
+        hasFog: projectData.hasFog,
+        keyFog: projectData.keyFog,
+        masterButtons: projectData.masterButtons,
+        sectors: projectData.sectors.map(s => ({
+            id: s.id,
+            name: s.name,
+            imgBaseName: s.imgBaseName,
+            imgNightName: s.imgNightName,
+            imgBlackoutName: s.imgBlackoutName,
+            hotspots: s.hotspots
+        }))
+    };
+    localStorage.setItem('rpg_forge_builder_data_v3', JSON.stringify(dataToSave));
+}
+
+function loadProjectData() {
+    const saved = localStorage.getItem('rpg_forge_builder_data_v3');
+    if (!saved) return;
+    try {
+        const loaded = JSON.parse(saved);
+        projectData.name = loaded.name || "";
+        projectData.theme = loaded.theme || "survival";
+        projectData.customThemeName = loaded.customThemeName || "";
+        projectData.hasDayNight = loaded.hasDayNight || false;
+        projectData.keyDayNight = loaded.keyDayNight || "";
+        projectData.hasBlackout = loaded.hasBlackout || false;
+        projectData.keyBlackout = loaded.keyBlackout || "";
+        projectData.keyTokenLight = loaded.keyTokenLight || "";
+        projectData.hasCctv = loaded.hasCctv || false;
+        projectData.keyCctv = loaded.keyCctv || "";
+        projectData.hasFog = loaded.hasFog || false;
+        projectData.keyFog = loaded.keyFog || "";
+        projectData.masterButtons = loaded.masterButtons || [];
+        projectData.sectors = (loaded.sectors || []).map(s => ({
+            id: s.id,
+            name: s.name,
+            imgBaseName: s.imgBaseName || "",
+            imgNightName: s.imgNightName || "",
+            imgBlackoutName: s.imgBlackoutName || "",
+            blobBase: null,
+            blobNight: null,
+            blobBlackout: null,
+            hotspots: s.hotspots || []
+        }));
+
+        if (projectData.sectors.length === 0) {
+            projectData.sectors.push({ 
+                id: 'andar_1', name: 'Recepção', 
+                imgBaseName: '', imgNightName: '', imgBlackoutName: '', 
+                blobBase: null, blobNight: null, blobBlackout: null,
+                hotspots: [] 
+            });
+        }
+
+        // Atualiza os inputs da interface
+        const wName = document.getElementById('worldName');
+        if (wName) wName.value = projectData.name;
+        const cThemeName = document.getElementById('customThemeName');
+        if (cThemeName) cThemeName.value = projectData.customThemeName;
+        
+        // Atualiza a seleção de temas na UI
+        document.querySelectorAll('.theme-card').forEach(opt => {
+            if (opt.dataset.theme === projectData.theme) {
+                opt.classList.add('selected');
+            } else {
+                opt.classList.remove('selected');
+            }
+        });
+        const customGroup = document.getElementById('customThemeContainer');
+        if (customGroup) {
+            customGroup.style.display = projectData.theme === 'custom' ? 'block' : 'none';
+        }
+
+        // Passo 2
+        const cboxDayNight = document.getElementById('cboxDayNight');
+        if (cboxDayNight) cboxDayNight.checked = projectData.hasDayNight;
+        const keyDayNight = document.getElementById('keyDayNight');
+        if (keyDayNight) keyDayNight.value = projectData.keyDayNight;
+        const cboxBlackout = document.getElementById('cboxBlackout');
+        if (cboxBlackout) cboxBlackout.checked = projectData.hasBlackout;
+        const keyBlackout = document.getElementById('keyBlackout');
+        if (keyBlackout) keyBlackout.value = projectData.keyBlackout;
+        const keyTokenLight = document.getElementById('keyTokenLight');
+        if (keyTokenLight) keyTokenLight.value = projectData.keyTokenLight;
+        const cboxCctv = document.getElementById('cboxCctv');
+        if (cboxCctv) cboxCctv.checked = projectData.hasCctv;
+        const keyCctv = document.getElementById('keyCctv');
+        if (keyCctv) keyCctv.value = projectData.keyCctv;
+        const cboxFog = document.getElementById('cboxFog');
+        if (cboxFog) cboxFog.checked = projectData.hasFog;
+        const keyFog = document.getElementById('keyFog');
+        if (keyFog) keyFog.value = projectData.keyFog;
+
+        renderMasterButtons();
+        renderSectors();
+    } catch (e) {
+        console.error("Erro ao carregar dados do builder:", e);
+    }
+}
+
 let currentStep = 1;
 let tempHotspot = { x: 0, y: 0 }; 
 window.userTestMapBlob = null; // Legacy global mock mode support
@@ -49,6 +162,7 @@ function nextStep(step) {
             if (!customInput) return showToast("Descreva o seu tema personalizado.");
             projectData.customThemeName = customInput;
         }
+        saveProjectData();
     }
 
     if (step === 3) {
@@ -62,6 +176,7 @@ function nextStep(step) {
         projectData.hasFog = document.getElementById('cboxFog').checked;
         projectData.keyFog = document.getElementById('keyFog').value.trim().toLowerCase();
         renderSectors();
+        saveProjectData();
     }
 
     if (step === 4) {
@@ -125,8 +240,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 customGroup.style.display = 'none';
             }
+            saveProjectData();
         });
     });
+    loadProjectData();
 });
 
 // ========================================================================
@@ -135,13 +252,18 @@ document.addEventListener('DOMContentLoaded', () => {
 function addMasterButton() {
     projectData.masterButtons.push({ tag: 'Botão ' + (projectData.masterButtons.length+1), action: 'alert("Botão Clickado");', key: '' });
     renderMasterButtons();
+    saveProjectData();
 }
 
-function updateMasterBtn(idx, field, val) { projectData.masterButtons[idx][field] = val; }
+function updateMasterBtn(idx, field, val) { 
+    projectData.masterButtons[idx][field] = val; 
+    saveProjectData();
+}
 
 function removeMasterButton(idx) {
     projectData.masterButtons.splice(idx, 1);
     renderMasterButtons();
+    saveProjectData();
 }
 
 function renderMasterButtons() {
@@ -170,6 +292,7 @@ function addSector() {
         hotspots: []
     });
     renderSectors();
+    saveProjectData();
 }
 
 function handleSectorFile(idx, type, fileObj) {
@@ -184,6 +307,7 @@ function handleSectorFile(idx, type, fileObj) {
         
         renderSectors();
         showToast("✓ Arquivo capturado para a simulação.");
+        saveProjectData();
     }
 }
 
@@ -191,6 +315,7 @@ function removeSector(idx) {
     if(confirm("Remover este andar?")) {
         projectData.sectors.splice(idx, 1);
         renderSectors();
+        saveProjectData();
     }
 }
 
@@ -243,6 +368,7 @@ function renderSectors() {
 
 function updateSector(index, key, value) {
     projectData.sectors[index][key] = value.trim();
+    saveProjectData();
 }
 
 // ========================================================================
@@ -344,6 +470,7 @@ function confirmHotspotCreation() {
     closeHotspotModal();
     renderHotspotMarkers();
     showToast("Hotspot vinculado com sucesso!");
+    saveProjectData();
 }
 
 window.isHotspotDragging = false;
@@ -411,6 +538,7 @@ window.setupDragHotspot = function(idx, event) {
         }, 80);
         if (moved) {
             showToast("Posição do hotspot salva!");
+            saveProjectData();
         }
     }
 
@@ -440,6 +568,7 @@ function removeHotspot(index, event) {
     if(confirm(`Deseja remover o direcionamento para "${sector.hotspots[index].title}"?`)) {
         sector.hotspots.splice(index, 1);
         renderHotspotMarkers();
+        saveProjectData();
     }
 }
 
@@ -902,11 +1031,11 @@ function generateTemplate() {
             const k = e.key.toLowerCase();
 
             // Mapeamentos Ambientais Gerados
-            if ("\${projectData.keyDayNight}" && k === "\${projectData.keyDayNight}") { if(hasDayNight) toggleTime(); }
-            if ("\${projectData.keyCctv}" && k === "\${projectData.keyCctv}") { if(\${projectData.hasCctv}) toggleCCTV(); }
-            if ("\${projectData.keyFog}" && k === "\${projectData.keyFog}") { if(\${projectData.hasFog}) toggleFog(); }
-            if ("\${projectData.keyBlackout}" && k === "\${projectData.keyBlackout}") { if(\${projectData.hasBlackout}) toggleBlackout(); }
-            if ("\${projectData.keyTokenLight}" && k === "\${projectData.keyTokenLight}") {
+            if ("${projectData.keyDayNight}" && k === "${projectData.keyDayNight}") { if(hasDayNight) toggleTime(); }
+            if ("${projectData.keyCctv}" && k === "${projectData.keyCctv}") { if(${projectData.hasCctv}) toggleCCTV(); }
+            if ("${projectData.keyFog}" && k === "${projectData.keyFog}") { if(${projectData.hasFog}) toggleFog(); }
+            if ("${projectData.keyBlackout}" && k === "${projectData.keyBlackout}") { if(${projectData.hasBlackout}) toggleBlackout(); }
+            if ("${projectData.keyTokenLight}" && k === "${projectData.keyTokenLight}") {
                  if (selectedTokens.size > 0) {
                      // Alterna as lanternas dos tokens marcardos e refaz render do mapa
                      selectedTokens.forEach(id => window.toggleTokenLight(id));
@@ -915,7 +1044,7 @@ function generateTemplate() {
             }
 
             // Mapeamentos de Botões Nativos Mestre
-            \${projectData.masterButtons.map(b => b.key ? \`if (k === "\\${b.key.toLowerCase()}") { \${b.action}; }\` : '').join('\\n            ')}
+            ${projectData.masterButtons.map(b => b.key ? "if (k === '" + b.key.toLowerCase() + "') { " + b.action + "; }" : "").join('\n            ')}
 
             // Spawns e Jumpscares via F7-F10
             if (isF7Down) {
@@ -998,7 +1127,7 @@ function generateTemplate() {
                     charsData[currentId].forEach(t => {
                         if(selectedTokens.has(t.id)) {
                             t.flipped = !t.flipped;
-                            const el = document.querySelector(\`.char-token[data-id="\\\${t.id}"]\`);
+                            const el = document.querySelector(\`.char-token[data-id="\${t.id}"]\`);
                             if(el) {
                                 // Flip apenas no emoji, nao no nome
                                 const face = el.querySelector('.token-face');
@@ -1372,7 +1501,7 @@ function generateTemplate() {
                     jsVid.style.marginTop = "25vh";
                 }
 
-                jsOverlay.style.backgroundImage = \`url('\\${bgImage}')\`;
+                jsOverlay.style.backgroundImage = \`url('\${bgImage}')\`;
                 jsOverlay.style.display = 'flex';
                 jsVid.play();
                 updateMonsterSound();
