@@ -51,6 +51,8 @@ body {
     padding: 25px 50px;
     background: transparent;
     border-bottom: 1px solid transparent;
+    gap: 40px;
+    flex-wrap: wrap;
 }
 
 .brand {
@@ -390,11 +392,20 @@ body {
 .hs-marker-viz[data-vis="visible"]:hover { transform: scale(1.2); }
 
 .hs-marker-viz[data-vis="semi"] {
-    background: transparent;
-    border: 2px dashed rgba(255,255,255,0.4);
+    background: rgba(255, 255, 255, 0.002);
+    border: 1px solid rgba(255, 255, 255, 0.02);
+    backdrop-filter: blur(1.5px);
+    -webkit-backdrop-filter: blur(1.5px);
     box-shadow: none;
 }
-.hs-marker-viz[data-vis="semi"]:hover { transform: scale(1.2); background: rgba(255,255,255,0.2); border-color: #fff; }
+.hs-marker-viz[data-vis="semi"]:hover {
+    transform: scale(1.25);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
 
 .hs-marker-viz[data-vis="invisible"] {
     background: rgba(255, 255, 255, 0.1);

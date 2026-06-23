@@ -6,6 +6,9 @@ let projectData = {
     name: "",
     theme: "survival",
     customThemeName: "",
+    customColor: "#f72585",
+    showLocationName: true,
+    locationNamePos: "bottom-left",
     hasDayNight: false,
     keyDayNight: '',
     hasBlackout: false,
@@ -26,12 +29,28 @@ let projectData = {
     ]
 };
 
+function hexToRgbA(hex, alpha) {
+    let c;
+    if(/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)){
+        c= hex.substring(1).split('');
+        if(c.length== 3){
+            c= [c[0], c[0], c[1], c[1], c[2], c[2]];
+        }
+        c= '0x' + c.join('');
+        return 'rgba('+[(c>>16)&255, (c>>8)&255, c&255].join(',')+','+alpha+')';
+    }
+    return 'rgba(220,163,98,'+alpha+')';
+}
+
 // PERSISTENCIA DO BUILDER (SALVAR NO LOCALSTORAGE)
 function saveProjectData() {
     const dataToSave = {
         name: projectData.name,
         theme: projectData.theme,
         customThemeName: projectData.customThemeName,
+        customColor: projectData.customColor,
+        showLocationName: projectData.showLocationName,
+        locationNamePos: projectData.locationNamePos,
         hasDayNight: projectData.hasDayNight,
         keyDayNight: projectData.keyDayNight,
         hasBlackout: projectData.hasBlackout,
@@ -62,6 +81,9 @@ function loadProjectData() {
         projectData.name = loaded.name || "";
         projectData.theme = loaded.theme || "survival";
         projectData.customThemeName = loaded.customThemeName || "";
+        projectData.customColor = loaded.customColor || "#f72585";
+        projectData.showLocationName = loaded.showLocationName !== false;
+        projectData.locationNamePos = loaded.locationNamePos || "bottom-left";
         projectData.hasDayNight = loaded.hasDayNight || false;
         projectData.keyDayNight = loaded.keyDayNight || "";
         projectData.hasBlackout = loaded.hasBlackout || false;
@@ -98,6 +120,8 @@ function loadProjectData() {
         if (wName) wName.value = projectData.name;
         const cThemeName = document.getElementById('customThemeName');
         if (cThemeName) cThemeName.value = projectData.customThemeName;
+        const cThemeColor = document.getElementById('customThemeColor');
+        if (cThemeColor) cThemeColor.value = projectData.customColor;
         
         // Atualiza a seleção de temas na UI
         document.querySelectorAll('.theme-card').forEach(opt => {
@@ -132,6 +156,11 @@ function loadProjectData() {
         const keyFog = document.getElementById('keyFog');
         if (keyFog) keyFog.value = projectData.keyFog;
 
+        const cboxShowLoc = document.getElementById('cboxShowLocation');
+        if (cboxShowLoc) cboxShowLoc.checked = projectData.showLocationName;
+        const selectLocPos = document.getElementById('selectLocationPos');
+        if (selectLocPos) selectLocPos.value = projectData.locationNamePos;
+
         renderMasterButtons();
         renderSectors();
     } catch (e) {
@@ -151,21 +180,15 @@ let editorCctv = false;
 // 1. WIZARD NAVIGATION
 // ========================================================================
 
-function nextStep(step) {
-    if (step === 2) {
+function saveCurrentStepData() {
+    if (currentStep === 1) {
         const nameInput = document.getElementById('worldName').value.trim();
-        if (!nameInput) return showToast("Por favor, preencha o Nome do Projeto.");
         projectData.name = nameInput;
-
         if (projectData.theme === 'custom') {
-            const customInput = document.getElementById('customThemeName').value.trim();
-            if (!customInput) return showToast("Descreva o seu tema personalizado.");
-            projectData.customThemeName = customInput;
+            projectData.customThemeName = document.getElementById('customThemeName').value.trim();
+            projectData.customColor = document.getElementById('customThemeColor').value;
         }
-        saveProjectData();
-    }
-
-    if (step === 3) {
+    } else if (currentStep === 2) {
         projectData.hasDayNight = document.getElementById('cboxDayNight').checked;
         projectData.keyDayNight = document.getElementById('keyDayNight').value.trim().toLowerCase();
         projectData.hasBlackout = document.getElementById('cboxBlackout').checked;
@@ -175,22 +198,259 @@ function nextStep(step) {
         projectData.keyCctv = document.getElementById('keyCctv').value.trim().toLowerCase();
         projectData.hasFog = document.getElementById('cboxFog').checked;
         projectData.keyFog = document.getElementById('keyFog').value.trim().toLowerCase();
-        renderSectors();
-        saveProjectData();
+        
+        projectData.showLocationName = document.getElementById('cboxShowLocation').checked;
+        projectData.locationNamePos = document.getElementById('selectLocationPos').value;
+    }
+    saveProjectData();
+}
+
+function goToStartScreen(push = true) {
+    document.querySelectorAll('.wizard-card').forEach(v => v.classList.remove('active'));
+    const startScreen = document.getElementById('startScreenView');
+    if (startScreen) startScreen.classList.add('active');
+    
+    const stepper = document.getElementById('stepperNav');
+    if (stepper) stepper.style.display = 'none';
+    
+    // Check if there is saved data in localStorage to enable/disable continue button
+    const saved = localStorage.getItem('rpg_forge_builder_data_v3');
+    const continueBtn = document.getElementById('btnContinueEditing');
+    if (continueBtn) {
+        if (saved) {
+            continueBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            continueBtn.removeAttribute('disabled');
+        } else {
+            continueBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            continueBtn.setAttribute('disabled', 'true');
+        }
     }
 
+    currentStep = 0;
+
+    if (push) {
+        history.pushState({ view: 'start' }, '', '#inicio');
+    }
+}
+
+function startNewProject() {
+    const saved = localStorage.getItem('rpg_forge_builder_data_v3');
+    if (saved) {
+        if (!confirm("Você já possui um progresso salvo. Deseja iniciar um novo projeto? Isso irá sobrescrever o progresso atual no navegador.")) {
+            return;
+        }
+    }
+    
+    // Reset projectData
+    projectData = {
+        name: "",
+        theme: "survival",
+        customThemeName: "",
+        customColor: "#f72585",
+        showLocationName: true,
+        locationNamePos: "bottom-left",
+        hasDayNight: false,
+        keyDayNight: '',
+        hasBlackout: false,
+        keyBlackout: '',
+        keyTokenLight: '',
+        hasCctv: false,
+        keyCctv: '',
+        hasFog: false,
+        keyFog: '',
+        masterButtons: [],
+        sectors: [
+            { 
+                id: 'andar_1', name: 'Recepção', 
+                imgBaseName: '', imgNightName: '', imgBlackoutName: '', 
+                blobBase: null, blobNight: null, blobBlackout: null,
+                hotspots: [] 
+            }
+        ]
+    };
+    
+    // Clear inputs in UI
+    document.getElementById('worldName').value = "";
+    document.getElementById('customThemeName').value = "";
+    document.getElementById('customThemeColor').value = "#f72585";
+    document.getElementById('cboxDayNight').checked = false;
+    document.getElementById('keyDayNight').value = "";
+    document.getElementById('cboxBlackout').checked = false;
+    document.getElementById('keyBlackout').value = "";
+    document.getElementById('keyTokenLight').value = "";
+    document.getElementById('cboxCctv').checked = false;
+    document.getElementById('keyCctv').value = "";
+    document.getElementById('cboxFog').checked = false;
+    document.getElementById('keyFog').value = "";
+    document.getElementById('cboxShowLocation').checked = true;
+    document.getElementById('selectLocationPos').value = "bottom-left";
+    
+    document.querySelectorAll('.theme-card').forEach(opt => {
+        if (opt.dataset.theme === 'survival') {
+            opt.classList.add('selected');
+        } else {
+            opt.classList.remove('selected');
+        }
+    });
+    document.getElementById('customThemeContainer').style.display = 'none';
+    
+    renderMasterButtons();
+    renderSectors();
+    
+    localStorage.removeItem('rpg_forge_builder_data_v3');
+    saveProjectData();
+    
+    nextStep(1, true);
+}
+
+function continueEditing() {
+    nextStep(1, true);
+}
+
+function importProjectFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        const text = evt.target.result;
+        
+        const startMarker = "// RPG_FORGE_METADATA_START";
+        const endMarker = "// RPG_FORGE_METADATA_END";
+        const startIndex = text.indexOf(startMarker);
+        const endIndex = text.indexOf(endMarker);
+        
+        if (startIndex !== -1 && endIndex !== -1) {
+            try {
+                const block = text.substring(startIndex + startMarker.length, endIndex);
+                const eqIndex = block.indexOf("=");
+                if (eqIndex === -1) throw new Error("Atribuição não encontrada nos metadados");
+                
+                let jsonStr = block.substring(eqIndex + 1).trim();
+                if (jsonStr.endsWith(";")) {
+                    jsonStr = jsonStr.substring(0, jsonStr.length - 1).trim();
+                }
+                
+                const loaded = JSON.parse(jsonStr);
+                
+                projectData.name = loaded.name || "";
+                projectData.theme = loaded.theme || "survival";
+                projectData.customThemeName = loaded.customThemeName || "";
+                projectData.customColor = loaded.customColor || "#f72585";
+                projectData.showLocationName = loaded.showLocationName !== false;
+                projectData.locationNamePos = loaded.locationNamePos || "bottom-left";
+                projectData.hasDayNight = loaded.hasDayNight || false;
+                projectData.keyDayNight = loaded.keyDayNight || "";
+                projectData.hasBlackout = loaded.hasBlackout || false;
+                projectData.keyBlackout = loaded.keyBlackout || "";
+                projectData.keyTokenLight = loaded.keyTokenLight || "";
+                projectData.hasCctv = loaded.hasCctv || false;
+                projectData.keyCctv = loaded.keyCctv || "";
+                projectData.hasFog = loaded.hasFog || false;
+                projectData.keyFog = loaded.keyFog || "";
+                projectData.masterButtons = loaded.masterButtons || [];
+                projectData.sectors = (loaded.sectors || []).map(s => ({
+                    id: s.id,
+                    name: s.name,
+                    imgBaseName: s.imgBaseName || "",
+                    imgNightName: s.imgNightName || "",
+                    imgBlackoutName: s.imgBlackoutName || "",
+                    blobBase: null,
+                    blobNight: null,
+                    blobBlackout: null,
+                    hotspots: s.hotspots || []
+                }));
+                
+                if (projectData.sectors.length === 0) {
+                    projectData.sectors.push({ 
+                        id: 'andar_1', name: 'Recepção', 
+                        imgBaseName: '', imgNightName: '', imgBlackoutName: '', 
+                        blobBase: null, blobNight: null, blobBlackout: null,
+                        hotspots: [] 
+                    });
+                }
+                
+                saveProjectData();
+                
+                const wName = document.getElementById('worldName');
+                if (wName) wName.value = projectData.name;
+                const cThemeName = document.getElementById('customThemeName');
+                if (cThemeName) cThemeName.value = projectData.customThemeName;
+                const cThemeColor = document.getElementById('customThemeColor');
+                if (cThemeColor) cThemeColor.value = projectData.customColor;
+                
+                document.querySelectorAll('.theme-card').forEach(opt => {
+                    if (opt.dataset.theme === projectData.theme) {
+                        opt.classList.add('selected');
+                    } else {
+                        opt.classList.remove('selected');
+                    }
+                });
+                const customGroup = document.getElementById('customThemeContainer');
+                if (customGroup) {
+                    customGroup.style.display = projectData.theme === 'custom' ? 'block' : 'none';
+                }
+                
+                if (document.getElementById('cboxDayNight')) document.getElementById('cboxDayNight').checked = projectData.hasDayNight;
+                if (document.getElementById('keyDayNight')) document.getElementById('keyDayNight').value = projectData.keyDayNight;
+                if (document.getElementById('cboxBlackout')) document.getElementById('cboxBlackout').checked = projectData.hasBlackout;
+                if (document.getElementById('keyBlackout')) document.getElementById('keyBlackout').value = projectData.keyBlackout;
+                if (document.getElementById('keyTokenLight')) document.getElementById('keyTokenLight').value = projectData.keyTokenLight;
+                if (document.getElementById('cboxCctv')) document.getElementById('cboxCctv').checked = projectData.hasCctv;
+                if (document.getElementById('keyCctv')) document.getElementById('keyCctv').value = projectData.keyCctv;
+                if (document.getElementById('cboxFog')) document.getElementById('cboxFog').checked = projectData.hasFog;
+                if (document.getElementById('keyFog')) document.getElementById('keyFog').value = projectData.keyFog;
+                
+                if (document.getElementById('cboxShowLocation')) document.getElementById('cboxShowLocation').checked = projectData.showLocationName;
+                if (document.getElementById('selectLocationPos')) document.getElementById('selectLocationPos').value = projectData.locationNamePos;
+
+                renderMasterButtons();
+                renderSectors();
+                
+                showToast("✓ Projeto importado com sucesso!");
+                
+                nextStep(1, true);
+            } catch (err) {
+                console.error(err);
+                alert("Erro ao ler dados do projeto importado. O formato do arquivo pode estar incorreto ou corrompido.");
+            }
+        } else {
+            alert("Não foram encontrados metadados válidos do construtor RPG Forge neste arquivo.");
+        }
+    };
+    reader.readAsText(file);
+}
+
+function nextStep(step, push = true) {
+    const stepper = document.getElementById('stepperNav');
+    if (stepper) stepper.style.display = 'flex';
+
+    saveCurrentStepData();
+
+    if (step > 1) {
+        const nameInput = document.getElementById('worldName').value.trim();
+        if (!nameInput) {
+            showToast("Por favor, preencha o Nome do Projeto no Passo 1.");
+            step = 1;
+        } else {
+            projectData.name = nameInput;
+        }
+    }
+
+    if (step === 3) {
+        renderSectors();
+    }
     if (step === 4) {
-        // Valida se os andares pussuem ao menos um nome base configurado ou blob salvo.
         initEditor();
     }
-
     if (step === 5) {
         if (!window.currentPromptTab) window.currentPromptTab = 'minigame';
         updatePromptForType(window.currentPromptTab);
     }
 
     document.querySelectorAll('.wizard-card').forEach(v => v.classList.remove('active'));
-    document.getElementById(`step${step}View`).classList.add('active');
+    const stepView = document.getElementById(`step${step}View`);
+    if (stepView) stepView.classList.add('active');
 
     document.querySelectorAll('.step').forEach(btn => {
         const btnStep = parseInt(btn.dataset.step);
@@ -204,28 +464,30 @@ function nextStep(step) {
             btn.classList.remove('active', 'completed');
         }
     });
+
     currentStep = step;
+
+    if (push) {
+        history.pushState({ view: `step${step}`, step: step }, '', `#passo${step}`);
+    }
 }
 
 function prevStep(step) {
-    document.querySelectorAll('.wizard-card').forEach(v => v.classList.remove('active'));
-    document.getElementById(`step${step}View`).classList.add('active');
-
-    document.querySelectorAll('.step').forEach(btn => {
-        const btnStep = parseInt(btn.dataset.step);
-        if (btnStep === step) {
-            btn.classList.add('active');
-            btn.classList.remove('completed');
-        } else if (btnStep < step) {
-            btn.classList.remove('active');
-            btn.classList.add('completed');
-        } else {
-            btn.classList.remove('active', 'completed');
-        }
-    });
-
-    currentStep = step;
+    nextStep(step, true);
 }
+
+window.addEventListener('popstate', (event) => {
+    const state = event.state;
+    if (state) {
+        if (state.view === 'start') {
+            goToStartScreen(false);
+        } else if (state.view && state.view.startsWith('step')) {
+            nextStep(state.step, false);
+        }
+    } else {
+        goToStartScreen(false);
+    }
+});
 
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.theme-card').forEach(opt => {
@@ -244,6 +506,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     loadProjectData();
+    
+    // Configura o estado inicial do histórico
+    history.replaceState({ view: 'start' }, '', '#inicio');
+    goToStartScreen(false);
 });
 
 // ========================================================================
@@ -670,19 +936,89 @@ function generateTemplate() {
         };
     });
 
+    let themeFontLink = '';
+    let themeFontFamily = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+
+    if (projectData.theme === 'survival') {
+        themeFontLink = '<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">';
+        themeFontFamily = "'Share Tech Mono', monospace";
+    } else if (projectData.theme === 'western') {
+        themeFontLink = '<link href="https://fonts.googleapis.com/css2?family=Rye&display=swap" rel="stylesheet">';
+        themeFontFamily = "'Rye', serif";
+    } else if (projectData.theme === 'mystery') {
+        themeFontLink = '<link href="https://fonts.googleapis.com/css2?family=Special+Elite&display=swap" rel="stylesheet">';
+        themeFontFamily = "'Special Elite', serif";
+    } else if (projectData.theme === 'fantasy') {
+        themeFontLink = '<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">';
+        themeFontFamily = "'Cinzel', serif";
+    } else if (projectData.theme === 'cyberpunk') {
+        themeFontLink = '<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap" rel="stylesheet">';
+        themeFontFamily = "'Orbitron', sans-serif";
+    } else if (projectData.theme === 'noir') {
+        themeFontLink = '<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">';
+        themeFontFamily = "'Playfair Display', serif";
+    } else if (projectData.theme === 'horror') {
+        themeFontLink = '<link href="https://fonts.googleapis.com/css2?family=Creepster&display=swap" rel="stylesheet">';
+        themeFontFamily = "'Creepster', cursive, serif";
+    }
+
+    let locationLabelCSS = '';
+    if (!projectData.showLocationName) {
+        locationLabelCSS = '.location-label { display: none !important; }';
+    } else {
+        let posStyles = '';
+        if (projectData.locationNamePos === 'bottom-left') {
+            posStyles = 'bottom: 20px; left: 25px; text-align: left;';
+        } else if (projectData.locationNamePos === 'bottom-right') {
+            posStyles = 'bottom: 20px; right: 25px; text-align: right;';
+        } else if (projectData.locationNamePos === 'top-left') {
+            posStyles = 'top: 90px; left: 25px; text-align: left;';
+        } else if (projectData.locationNamePos === 'top-right') {
+            posStyles = 'top: 90px; right: 25px; text-align: right;';
+        } else if (projectData.locationNamePos === 'center-bottom') {
+            posStyles = 'bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center;';
+        } else {
+            posStyles = 'bottom: 20px; left: 25px; text-align: left;';
+        }
+        locationLabelCSS = `.location-label { position: fixed; ${posStyles} z-index: 2000; pointer-events: none; }`;
+    }
+
     let envCSS = '';
     let envHTML = '';
     let customCssVars = '';
 
     if (projectData.theme === 'custom') {
-        customCssVars = '--main-color: #f72585; --bg-gradient: radial-gradient(circle, rgba(16,10,25,1) 0%, rgba(0,0,0,1) 100%); --ambient-glow: rgba(247,37,133,0.3);';
+        const customColor = projectData.customColor || '#f72585';
+        customCssVars = `--main-color: ${customColor}; --bg-gradient: radial-gradient(circle, rgba(16,10,25,1) 0%, rgba(0,0,0,1) 100%); --ambient-glow: ${hexToRgbA(customColor, 0.3)};`;
     } else if (projectData.theme === 'survival') {
         customCssVars = '--main-color: #e5b376; --bg-gradient: radial-gradient(circle, rgba(20,25,20,1) 0%, rgba(5,10,5,1) 100%); --ambient-glow: rgba(229,179,118,0.3);';
     } else if (projectData.theme === 'western') {
         customCssVars = '--main-color: #d17a22; --bg-gradient: radial-gradient(circle, rgba(35,20,10,1) 0%, rgba(10,5,0,1) 100%); --ambient-glow: rgba(209,122,34,0.3);';
     } else if (projectData.theme === 'mystery') {
         customCssVars = '--main-color: #7289da; --bg-gradient: radial-gradient(circle, rgba(15,20,35,1) 0%, rgba(0,0,5,1) 100%); --ambient-glow: rgba(114,137,218,0.3);';
+    } else if (projectData.theme === 'fantasy') {
+        customCssVars = '--main-color: #dfb332; --bg-gradient: radial-gradient(circle, rgba(10,18,36,1) 0%, rgba(2,4,10,1) 100%); --ambient-glow: rgba(223,179,50,0.3);';
+    } else if (projectData.theme === 'cyberpunk') {
+        customCssVars = '--main-color: #00f0ff; --bg-gradient: radial-gradient(circle, rgba(30,10,40,1) 0%, rgba(5,0,10,1) 100%); --ambient-glow: rgba(0,240,255,0.3);';
+    } else if (projectData.theme === 'noir') {
+        customCssVars = '--main-color: #c0c0c0; --bg-gradient: radial-gradient(circle, rgba(30,30,30,1) 0%, rgba(5,5,5,1) 100%); --ambient-glow: rgba(192,192,192,0.3);';
+    } else if (projectData.theme === 'horror') {
+        customCssVars = '--main-color: #ff3333; --bg-gradient: radial-gradient(circle, rgba(20,5,5,1) 0%, rgba(0,0,0,1) 100%); --ambient-glow: rgba(255,51,51,0.3);';
     }
+
+    const esc = str => str.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\${/g, '\\${');
+    
+    const serializedMetadata = esc(JSON.stringify(projectData));
+    const serializedHierarchy = esc(JSON.stringify(hierarchy));
+    const themeLoreEscaped = esc(projectData.theme === 'custom' ? projectData.customThemeName : projectData.theme);
+    
+    const masterButtonsHTML = esc(projectData.masterButtons.map(b => 
+        `<button class="btn-ui" onclick="${b.action.replace(/"/g, "'")}; closeCtxMenu();">${b.tag}</button>`
+    ).join(''));
+    
+    const masterButtonsJS = esc(projectData.masterButtons.map(b => 
+        b.key ? `if (k === '${b.key.toLowerCase()}') { ${b.action}; }` : ""
+    ).join('\n            '));
     
     // Engine CSS Master de sobreposição ambiente (DayNight é resolvido logicamente, CCTV/Blackout são DOM Layers e Canvas)
     const cctvLayerCSS = `
@@ -728,14 +1064,15 @@ function generateTemplate() {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${projectData.name} | Gerado RpgForge V3</title>
+    ${themeFontLink}
     <style>
         :root { ${customCssVars} }
         /* CSS BASE - ENGRENAGEM PRINCIPAL */
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: var(--bg-gradient); color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
-
+        body { background: var(--bg-gradient); color: #fff; font-family: ${themeFontFamily}; overflow: hidden; }
+ 
         /* LABEL FLUTUANTE DE LOCALIZAÇÃO */
-        .location-label { position: fixed; bottom: 20px; left: 25px; z-index: 2000; pointer-events: none; }
+        ${locationLabelCSS}
         .location-name { font-weight: 700; font-size: 1.1em; text-transform: uppercase; letter-spacing: 3px; color: var(--main-color); text-shadow: 0 2px 8px rgba(0,0,0,0.9), 0 0 20px var(--ambient-glow); }
         .location-hint { font-size: 0.65em; color: rgba(255,255,255,0.35); letter-spacing: 1px; margin-top: 3px; }
 
@@ -759,8 +1096,8 @@ function generateTemplate() {
         .hs-marker-viz { position: absolute; transform: translate(-50%, -50%); width: 25px; height: 25px; border-radius: 50%; pointer-events: auto; cursor: pointer; transition: all 0.3s; z-index: 20; }
         .hs-marker-viz[data-vis="visible"] { background: var(--main-color); border: 2px solid #fff; box-shadow: 0 0 15px var(--ambient-glow); }
         .hs-marker-viz[data-vis="visible"]:hover { transform: translate(-50%, -50%) scale(1.3); }
-        .hs-marker-viz[data-vis="semi"] { background: transparent; border: 2px dashed rgba(255,255,255,0.3); }
-        .hs-marker-viz[data-vis="semi"]:hover { transform: translate(-50%, -50%) scale(1.3); background: rgba(255,255,255,0.2); border-color: #fff; }
+        .hs-marker-viz[data-vis="semi"] { background: rgba(255, 255, 255, 0.002); border: 1px solid rgba(255, 255, 255, 0.02); backdrop-filter: blur(1.5px); -webkit-backdrop-filter: blur(1.5px); box-shadow: none; }
+        .hs-marker-viz[data-vis="semi"]:hover { transform: translate(-50%, -50%) scale(1.3); background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); }
         .hs-marker-viz[data-vis="invisible"] { background: transparent; border: none; }
         .hs-marker-viz[data-vis="invisible"]:hover { background: rgba(255,255,255,0.05); }
 
@@ -795,7 +1132,7 @@ function generateTemplate() {
         <div class="ctx-title">⚙ Controles do Mestre</div>
         <div class="ctx-sep"></div>
         <button class="btn-ui btn-back" id="ctxBtnBack" onclick="goBack(); closeCtxMenu();" style="display:none;">← Voltar ao Anterior</button>
-        ${projectData.masterButtons.map(b => `<button class="btn-ui" onclick="${b.action.replace(/"/g, "'")}; closeCtxMenu();">${b.tag}</button>`).join('')}
+        ${masterButtonsHTML}
         ${projectData.hasDayNight ? `<button class="btn-ui" onclick="toggleTime(); closeCtxMenu();">🌤️ Dia / Noite</button>` : ''}
         ${projectData.hasFog ? `<button class="btn-ui" onclick="toggleFog(); closeCtxMenu();">☁️ Névoa</button>` : ''}
         ${projectData.hasCctv ? `<button class="btn-ui" onclick="toggleCCTV(); closeCtxMenu();">🎥 CCTV</button>` : ''}
@@ -861,8 +1198,11 @@ function generateTemplate() {
     <audio id="sndVanMotor" src="van_motor.mp3" preload="auto" loop></audio>
 
     <script>
-        const THEME_LORE = "${projectData.theme === 'custom' ? projectData.customThemeName : projectData.theme}";
-        const hierarchy = ${JSON.stringify(hierarchy)};
+        // RPG_FORGE_METADATA_START
+        // const rpgForgeProjectData = ${serializedMetadata};
+        // RPG_FORGE_METADATA_END
+        const THEME_LORE = "${themeLoreEscaped}";
+        const hierarchy = ${serializedHierarchy};
         const hasDayNight = ${projectData.hasDayNight};
         const hasBlackoutFeature = ${projectData.hasBlackout};
         
@@ -1044,7 +1384,7 @@ function generateTemplate() {
             }
 
             // Mapeamentos de Botões Nativos Mestre
-            ${projectData.masterButtons.map(b => b.key ? "if (k === '" + b.key.toLowerCase() + "') { " + b.action + "; }" : "").join('\n            ')}
+            ${masterButtonsJS}
 
             // Spawns e Jumpscares via F7-F10
             if (isF7Down) {
