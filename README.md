@@ -1,4 +1,4 @@
-# ⚒️ The RPG Forge v3.1 (Professional)
+# ⚒️ The RPG Forge v3.1 
 
 **Acesse o sistema online aqui:** 🚀 [The RPG Forge - Web Builder](https://cassiano-behemonth.github.io/Criacao-de-mapas-e-sistema-RPG-basicos-modelos/)
 
